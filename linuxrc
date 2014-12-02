@@ -1,0 +1,212 @@
+#!/bin/sh
+#
+# (c) Copyright 2002    Edgar Hucek <hostmaster@ed-soft.at>
+#                       All Rights Reserved.
+#
+#                       http://xbox-linux.sourceforge.net
+#
+#       This program is free software; you can redistribute it and/or
+#       modify it under the terms of the GNU General Public License
+#       as published by the Free Software Foundation; either version
+#       2 of the License, or (at your option) any later version.
+#
+#       Neither Edgar Hucek nor xbox-linux admit liability nor provide
+#       warranty for any of this software. This material is provided
+#       "AS-IS" and at no charge.
+#
+#       (c) Copyright 2002      Edgar Hucek <hostmaster@ed-soft.at>
+
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/
+export PATH
+
+umask 022
+
+findcd () {
+	for i in `find /newroot/dev/* -name 'cd'`;
+	do
+		echo "Looking for CD-ROM at $i... "
+		mount -r -t iso9660 $i /newroot/mnt/cdrom
+		if [ $? -eq 0 ]; then
+			return 0
+		fi
+	done
+}
+
+mount -t proc none /proc
+#echo 0x100 > /proc/sys/kernel/real-root-dev
+
+
+FATX_E=`grep xbox=fatx_e /proc/cmdline`
+FATX_F=`grep xbox=fatx_f /proc/cmdline`
+FATX_LOOP=`grep xbox=fatxlo /proc/cmdline`
+SAVE=`grep xbox=save /proc/cmdline`
+HDD=`grep xbox=hdd /proc/cmdline`
+CDROM=`grep xbox=cdrom /proc/cmdline`
+UPLOAD=`grep xbox=upload /proc/cmdline`
+PCBOOT=`grep pcboot=cdrom /proc/cmdline`
+HDSOURCE=`grep xbox=hdsource /proc/cmdline`
+DEBUG=`grep debug /proc/cmdline`
+PENDRIVE=`grep pendrive /proc/cmdline`
+
+if [ "$UPLOAD" != "" ]; then
+	mount /mnt/C
+	mount /mnt/E
+	mount /mnt/F
+	mount /mnt/X
+	mount /mnt/Y
+	insmod /lib/modules/`uname -r`/forcedeth.o
+	ifconfig eth0 192.168.0.3
+	/sbin/pure-ftpd -A -lunix &
+	telnetd
+	/bin/sh
+fi
+
+if [ "$CDROM" != "" ]; then
+	LIVEFS="yes"
+fi
+
+if [ "$PCBOOT" != "" ]; then
+	LIVEFS="yes"
+fi
+
+if [ "$LIVEFS" != "" ]; then
+	umount /dev
+
+	CHECK=`uname -r | grep 2.6`
+	if [ "$CHECK" != "" ]; then
+		insmod /lib/modules/`uname -r`/usbcore.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/ehci-hcd.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/ohci-hcd.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/uhci-hcd.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/usb-storage.ko 2>/dev/null
+		sleep 10
+	fi
+
+	mount -t tmpfs none /newroot
+	mkdir -p /newroot/mnt/cdrom /newroot/mnt/livecd 
+	mkdir -p /newroot/mnt/tempfs /newroot/mnt/squashfs
+	mkdir -p /newroot/dev /newroot/proc 
+	chmod 777 /newroot/mnt/livecd /newroot/mnt/tempfs
+
+	mount -t proc none /newroot/proc
+	mount -t devfs none /newroot/dev
+	mount -o bind /newroot/dev /dev
+	
+	if [ "$PENDRIVE" != "" ]; then
+		PART=`find /dev/scsi* -name disc`
+		insmod /lib/modules/`uname -r`/fat.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/msdos.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/nls_cp850.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/nls_iso8859-15.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/nls_iso8859-1.ko 2>/dev/null
+		insmod /lib/modules/`uname -r`/vfat.ko 2>/dev/null
+		mount -t vfat $PART /newroot/mnt/cdrom
+	fi
+	if [ "$PENDRIVE" = "" ]; then
+		findcd
+	fi
+
+	CHECK=`uname -r | grep 2.6`
+	if [ "$CHECK" != "" ]; then
+		insmod /lib/modules/`uname -r`/loop.ko
+		insmod /lib/modules/`uname -r`/squashfs.ko
+	fi
+	CHECK=`uname -r | grep 2.4`
+	if [ "$CHECK" != "" ]; then
+		insmod /lib/modules/`uname -r`/loop.o
+		insmod /lib/modules/`uname -r`/squashfs.o
+	fi
+	mount -o loop,ro,suid -t squashfs /newroot/mnt/cdrom/livefs /newroot/mnt/squashfs
+	CHECK=`uname -r | grep 2.6`
+	if [ "$CHECK" != "" ]; then
+		insmod /newroot/mnt/squashfs/lib/modules/`uname -r`/misc/unionfs.ko
+	fi
+	CHECK=`uname -r | grep 2.4`
+	if [ "$CHECK" != "" ]; then
+		insmod /newroot/mnt/squashfs/lib/modules/`uname -r`/misc/unionfs.o
+	fi
+	mount -t unionfs -o dirs=/newroot/mnt/tempfs unionfs /newroot/mnt/livecd
+	unionctl /newroot/mnt/livecd --add --after 0 /newroot/mnt/squashfs
+	if [ "$DEBUG" != "" ]; then
+		/bin/sh
+	fi
+
+	mkdir /newroot/mnt/livecd/mnt/initrd
+	chmod 1777 /newroot/mnt/livecd/tmp
+	cd /newroot/mnt/livecd
+
+	pivot_root . mnt/initrd
+
+	exec <dev/console >dev/console 2>&1
+	exec /usr/sbin/chroot . /bin/sh <<- EOF
+		/bin/umount /mnt/initrd/dev/pts > dev/null 2>&1
+		/bin/umount /mnt/initrd/dev > dev/null 2>&1
+		/bin/umount /mnt/initrd/dev > dev/null 2>&1
+		/bin/umount /mnt/initrd/proc > dev/null 2>&1
+		/bin/umount /mnt/initrd > dev/null 2>&1
+		/bin/umount /dev/pts > dev/null 2>&1
+		/bin/umount /proc > dev/null 2>&1
+		/sbin/blockdev --flushbufs /dev/ram0 >/dev/null 2>&1
+		exec /sbin/init
+	EOF
+
+	echo "Something wicked happened!!!"
+	/bin/sh
+fi
+
+if [ "$FATX_E" != "" ]; then
+	path=
+	for i in $FATX_E; do
+		if [ "$i" != "${i#xbox=}" ]; then
+			path="${i#xbox=fatx_e:}"
+		fi
+	done
+	insmod /lib/modules/`uname -r`/loop.o >/dev/null 2>&1
+
+	mount -t fatx /dev/ide/host0/bus0/target0/lun0/part50 /newroot/mnt/cdrom
+	mount -t ext3 -o loop /newroot/mnt/cdrom/$path/rootfs /newroot/mnt/livefs
+fi
+
+if [ "$FATX_F" != "" ]; then
+	path=
+	for i in $FATX_F; do
+		if [ "$i" != "${i#xbox=}" ]; then
+			path="${i#xbox=fatx_f:}"
+		fi
+	done
+	insmod /lib/modules/`uname -r`/loop.o >/dev/null 2>&1
+
+	mount -t fatx /dev/ide/host0/bus0/target0/lun0/part55 /newroot/mnt/cdrom
+	mount -t ext3 -o loop /newroot/mnt/cdrom/$path/rootfs /newroot/mnt/livefs
+fi
+
+if [ "$HDD" != "" ]; then
+	mount -t ext3 -o ro,notail /dev/ide/host0/bus0/target0/lun0/part2 /newroot/mnt/livefs
+fi
+
+mount -t proc none /newroot/mnt/livefs/proc >/dev/null 2>&1
+mount -t devfs none /newroot/mnt/livefs/dev >/dev/null 2>&1
+mount -t devpts none /newroot/mnt/livefs/dev/pts >/dev/null 2>&1
+umount /dev >/dev/null 2>&1
+
+cd /newroot/mnt/livefs
+pivot_root . initrd
+
+exec <dev/console >dev/console 2>&1
+exec /usr/sbin/chroot . /bin/sh <<- EOF
+	/bin/umount /mnt/initrd/dev/pts > dev/null 2>&1
+	/bin/umount /mnt/initrd/dev > dev/null 2>&1
+	/bin/umount /mnt/initrd/dev > dev/null 2>&1
+	/bin/umount /mnt/initrd/proc > dev/null 2>&1
+	/bin/umount /mnt/initrd > dev/null 2>&1
+	/bin/umount /dev/pts > dev/null 2>&1
+	/bin/umount /proc > dev/null 2>&1
+	/bin/umount /dev > dev/null 2>&1
+	/sbin/blockdev --flushbufs /dev/ram0 >/dev/null 2>&1
+	exec /sbin/init
+EOF
+
+echo "Something wicked happened!!!"
+/bin/sh
+

@@ -1,0 +1,149 @@
+#!/bin/sh
+#
+# Copyright (c) 2002 Edgar Hucek <hostmaster@ed-soft.at>
+#
+
+. /usr/lib/xbox/functions
+
+TITLE="XBOXLinuxInstaller (c) Edgar Hucek<hostmaster@ed-soft.at>"
+SOURCE_MNT="/tmp/source"
+TARGET_MNT="/tmp/target"
+INST_DIR="debian"
+
+#mkdir $SOURCE_MNT
+mkdir $TARGET_MNT
+
+LOGFILE=/tmp/WWAInstall.log
+cleanup () {
+	if [ -f $LOGFILE ]; then
+		rm -f $LOGFILE
+	fi	
+}
+cleanup
+
+METHOD=`$DIA \
+--backtitle "$TITLE" \
+--cancel-label "Cancel" --ok-label "Next" \
+--stdout \
+--menu "Installation target" 15 70 6 \
+"1" "Installing XBOXLinux inside the Gamesave Partition" \
+"2" "Installing XBOXLinux in the unused space of the HDD" \
+"3" "XBOXLinux using the whole HDD. ( only use this with cromwell )"`
+RES=$?
+if [ "$RES" == "1" ];then
+	exit 0
+fi
+if [ "$RES" == "0" ];then
+        if [ "$METHOD" == "1" ];then
+		ROOT="/dev/hda50"
+		/usr/lib/xbox/partdisk_xbox.sh $ROOT
+		RET=$?
+		if [ "$RET" == "1" ];then
+			exit 0
+		fi
+		if [ ! -e $TARGET_MNT/$INST_DIR/ ]; then
+			mkdir  $TARGET_MNT/$INST_DIR/
+		fi
+		if [ ! -e $TARGET_MNT/$COPY_TO/ ]; then
+			mkdir  $TARGET_MNT/$COPY_TO/
+		fi
+		rm -f  $TARGET_MNT/$INST_DIR/vmlinuz
+		rm -f  $TARGET_MNT/$INST_DIR/initrd
+		rm -f  $TARGET_MNT/$INST_DIR/linuxboot.cfg
+		rm -f  $TARGET_MNT/$INST_DIR/default.xbe
+		cp /boot/vmlinuz $TARGET_MNT/$INST_DIR/vmlinuz
+		cp /boot/initrd  $TARGET_MNT/$INST_DIR/initrd
+		cp /boot/linuxboot.cfg.fatx_e $TARGET_MNT/$INST_DIR/linuxboot.cfg
+		cp /boot/default.xbe  $TARGET_MNT/$INST_DIR/
+		mount -o loop $TARGET_MNT/$INST_DIR/rootfs $TARGET_MNT
+		FSTAB=/usr/lib/xbox/fstab.hddimage
+        fi
+        if [ "$METHOD" == "2" ];then
+		/usr/lib/xbox/partdisk.sh
+		RET=$?
+		if [ "$RET" == "1" ];then
+			exit 0
+		fi
+		ROOT="/dev/hda50"
+		mount -t fatx $ROOT $TARGET_MNT
+		if [ -f $TARGET_MNT/$INST_DIR ];then
+			rm -f $TARGET_MNT/$INST_DIR
+		fi
+		if [ ! -e $TARGET_MNT/$INST_DIR/ ]; then
+			mkdir  $TARGET_MNT/$INST_DIR/
+		fi
+	 	rm -f  $TARGET_MNT/$INST_DIR/default.xbe
+		rm -f  $TARGET_MNT/$INST_DIR/vmlinuz
+		rm -f  $TARGET_MNT/$INST_DIR/initrd
+		rm -f  $TARGET_MNT/$INST_DIR/linuxboot.cfg
+		cp /boot/vmlinuz $TARGET_MNT/$INST_DIR/vmlinuz
+		cp /boot/linuxboot.cfg.hdd_xbe $TARGET_MNT/$INST_DIR/linuxboot.cfg
+		cp /boot/default.xbe  $TARGET_MNT/$INST_DIR/
+		sync
+		umount $ROOT
+		ROOT="/dev/hda2"
+		#swapon /dev/hda1
+		mount $ROOT $TARGET_MNT
+		FSTAB=/usr/lib/xbox/fstab.normal
+        fi
+        if [ "$METHOD" == "3" ];then
+		/usr/lib/xbox/partdisk_hole.sh
+		RET=$?
+		if [ "$RET" == "1" ];then
+			exit 0
+		fi
+		ROOT="/dev/hda2"
+		#swapon /dev/hda1
+		mount $ROOT $TARGET_MNT
+		FSTAB=/usr/lib/xbox/fstab.normal
+	fi
+fi
+
+cd $TARGET_MNT
+mkdir -p $SOURCE_MNT
+mount -o ro,suid,loop /dev/loop0 $SOURCE_MNT
+cp -vaR $SOURCE_MNT/* .
+sync
+#umount $SOURCE_MNT
+
+cp $FSTAB $TARGET_MNT/etc/fstab
+cd $TARGET_MNT
+if [ -f fastboot ]; then
+	rm -f fastboot
+fi
+rm -f xboxdisc
+XBOXSetup
+chroot $TARGET_MNT /usr/lib/xbox/rc_update.sh add
+chroot $TARGET_MNT /root/ssh_keygen.sh
+rm -f $TARGET_MNT/etc/ssh/ssh_host_*
+mv $TARGET_MNT/root/ssh_host_* $TARGET_MNT/etc/ssh/
+cd /
+sync
+
+if [ -d $TARGET_MNT/dev/loop ]; then
+        for i in `ls $TARGET_MNT/dev/loop/`
+        do
+                losetup -d $TARGET_MNT/dev/loop/$i > /dev/null 2>&1
+        done
+fi
+umount $TARGET_MNT/dev > /dev/null 2>&1
+umount $TARGET_MNT/proc > /dev/null 2>&1
+umount $TARGET_MNT > /dev/null 2>&1
+if [ -d /dev/loop ]; then
+        for i in `ls /dev/loop/`
+        do
+                losetup -d /dev/loop/$i > /dev/null 2>&1
+        done
+fi
+if [ "$METHOD" == "1" ]; then
+	swapoff $TARGET_MNT/$INST_DIR/swap
+	umount $TARGET_MNT > /dev/null 2>&1
+fi
+if [ "$METHOD" == "2" ]; then
+	swapoff /dev/hda1
+fi
+if [ "$METHOD" == "3" ]; then
+	swapoff /dev/hda1
+fi
+clear
+echo "Happy penguin"

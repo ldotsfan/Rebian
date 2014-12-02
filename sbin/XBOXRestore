@@ -1,0 +1,14 @@
+#!/bin/sh
+TARGET=$1
+if [ "$TARGET" == "" ]; then
+        echo "Usage $0 sourcedir"
+        echo "e.g.: $0 /tmp"
+        exit 1
+fi
+bzip2 -cd $TARGET/00head.raw.bz2 | dd of=/dev/hda            bs=512k
+bzip2 -cd $TARGET/0.raw.bz2      | dd of=/dev/hda seek=1     bs=512k
+bzip2 -cd $TARGET/1.raw.bz2      | dd of=/dev/hda seek=1501  bs=512k
+bzip2 -cd $TARGET/2.raw.bz2      | dd of=/dev/hda seek=3001  bs=512k
+bzip2 -cd $TARGET/3.raw.bz2      | dd of=/dev/hda seek=4501  bs=512k
+bzip2 -cd $TARGET/4*             | dd of=/dev/hda seek=5501  bs=512k
+bzip2 -cd $TARGET/5*             | dd of=/dev/hda seek=15291 bs=512k

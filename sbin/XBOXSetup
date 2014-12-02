@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# Copyright (c) 2002 Edgar Hucek <hostmaster@ed-soft.at>
+#
+
+if [ "$DIA" == "" ]; then
+	. /usr/lib/xbox/functions
+fi
+
+HOSTS="/usr/lib/xbox/hosts"
+HOSTNAME="/usr/lib/xbox/hostname"
+INTERFACES="/usr/lib/xbox/interfaces"
+TITLE="Network Config (c) Edgar Hucek"
+LOGFILE=/tmp/WWAInstall.log
+
+cleanup () {
+	if [ -f $LOGFILE ]; then
+		rm -f $LOGFILE
+	fi	
+}
+input_box() {
+	LOGFILE="/tmp/input.tmp"
+	TITLE=$1
+	TEXT=$2
+	DEFAULT=$3
+	$DIA --backtitle "$TITLE" --cancel-label "Cacncel" --ok-label "Next" --inputbox "$TEXT" 8 40 "$DEFAULT" 2>$LOGFILE
+	if [ "$?" == "1" ]; then
+	        if [ -f $LOGFILE ];
+		        then
+	                rm -f $LOGFILE
+	        fi
+		exit 0
+	fi
+	if [ "$?" == "0" ]; then
+		RETVAL=`cat $LOGFILE`	
+	fi
+}
+
+cleanup
+
+input_box "$TITLE" "IP Address ( i.e. 192.168.0.10 )" "192.168.0.10"
+IP=$RETVAL
+input_box "$TITLE" "Netmask ( i.e. 255.255.255.0 )" "255.255.255.0"
+NETMASK=$RETVAL
+input_box "$TITLE" "Gateway ( i.e. 192.168.0.1 )" "192.168.0.1"
+GATEWAY=$RETVAL
+input_box "$TITLE" "Hostname ( i.e. xebian )" "xebian"
+HOST=$RETVAL
+input_box "$TITLE" "Domain ( i.e. localdomain.local )" "localdomain.local"
+DOMAIN=$RETVAL
+sed -e "s/@IP@/$IP/g" -e "s/@NETMASK@/$NETMASK/g" -e "s/@GATEWAY@/$GATEWAY/g" < $INTERFACES > /tmp/target/etc/network/interfaces
+sed -e "s/@HOST@/$HOST/g" -e "s/@DOMAIN@/$DOMAIN/g" -e "s/@IP@/$IP/g" < $HOSTS > /tmp/target/etc/hosts
+sed -e "s/@HOST@/$HOST/g" -e "s/@DOMAIN@/$DOMAIN/g" < $HOSTNAME > /tmp/target/etc/hostname

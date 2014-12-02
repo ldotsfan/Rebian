@@ -1,0 +1,15 @@
+#!/bin/sh
+TARGET=$1
+if [ "$TARGET" == "" ]; then
+	echo "Usage $0 targetdir"
+	echo "e.g.: $0 /tmp"
+	exit 1
+fi
+dd if=/dev/hda of=$TARGET/00head.raw         count=1    bs=512k
+dd if=/dev/hda of=$TARGET/0.raw    skip=1    count=1500 bs=512k
+dd if=/dev/hda of=$TARGET/1.raw    skip=1501 count=1500 bs=512k
+dd if=/dev/hda of=$TARGET/2.raw    skip=3001 count=1500 bs=512k
+dd if=/dev/hda of=$TARGET/3.raw    skip=4501 count=1000 bs=512k
+dd if=/dev/hda             skip=5501 count=9790 bs=512k | split -b 1024m - $TARGET/4
+dd if=/dev/hda             skip=15291           bs=512k | split -b 1024m - $TARGET/5
+bzip2 -9 $TARGET/*.raw $TARGET/4* $TARGET/5*

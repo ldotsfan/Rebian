@@ -1,0 +1,79 @@
+#!/bin/sh
+#
+# Copyright (c) 2002 Edgar Hucek <hostmaster@ed-soft.at>
+#
+
+/usr/lib/wwa/partdisk.sh
+
+LOGFILE=/tmp/WWAInstall.log
+cleanup () {
+	if [ -f $LOGFILE ]; then
+		rm -f $LOGFILE
+	fi	
+}
+cleanup
+dialog --backtitle "Simple WWA hd Copy" --cancel-label "Abbrechen" --ok-label "Weiter" --inputbox "Boot Device ( example : /dev/hda )" 8 40 /dev/hda 2>$LOGFILE
+if [ "$?" == "1" ]; then
+	cleanup
+	exit 0
+fi
+if [ "$?" == "0" ]; then
+	BOOT=`cat $LOGFILE`	
+fi
+cleanup
+dialog --backtitle "Simple WWA hd Copy" --cancel-label "Abbrechen" --ok-label "Weiter" --inputbox "Root Device ( example : /dev/hda2 )" 8 40 /dev/hda2 2>$LOGFILE
+if [ "$?" == "1" ]; then
+	cleanup
+	exit 0
+fi
+if [ "$?" == "0" ]; then
+	ROOT=`cat $LOGFILE`	
+fi
+
+cd /tmp
+mkdir target
+mount -t ext3 $ROOT target
+mkdir -p /tmp/source
+mount -o ro,suid,loop /dev/loop/0 /tmp/source
+cp -vaR /tmp/source/* target/
+cd /tmp/target/etc/ssh
+rm -f ssh_host_* > /dev/null 2>&1
+/root/ssh_keygen.sh > /dev/null 2>&1
+mv /root/ssh_host_* /tmp/target/etc/ssh
+sync
+cd /tmp
+ROOT_SED=`echo $ROOT | sed -e 's/\//\\\ \//g'  | sed -e 's/ //g'`
+BOOT_SED=`echo $BOOT | sed -e 's/\//\\\ \//g'  | sed -e 's/ //g'`
+cat /usr/lib/wwa/lilo.conf | sed -e "s/@BOOT@/$BOOT_SED/g" -e "s/@ROOT@/$ROOT_SED/g" > /tmp/target/etc/lilo.conf
+cat /usr/lib/wwa/fstab | sed -e "s/@ROOT@/$ROOT_SED/g" > /tmp/target/etc/fstab
+cd /tmp/target
+if [ -f fastboot ]; then
+	rm -f fastboot
+fi
+
+cd /tmp/target/boot
+if [ -f System.map ]; then
+	rm -f System.map
+fi
+ln -s System.map-`uname -r` System.map
+if [ -f vmlinuz ]; then
+	rm -f vmlinuz
+fi
+ln -s vmlinuz-`uname -r` vmlinuz
+
+chroot /tmp/target /usr/lib/wwa/rc_update.sh add
+
+cd /
+lilo.real -r /tmp/target > /dev/null 2>&1
+rm -f /tmp/target/sbin/PCInstall
+sync
+for i in `ls /dev/loop/*`
+do
+        losetup -d $i > /dev/null 2>&1
+done
+umount /tmp/target/dev > /dev/null 2>&1
+umount /tmp/target/proc > /dev/null 2>&1
+umount /tmp/target > /dev/null 2>&1
+clear
+echo "successfully installed"
+echo "happy penguin"

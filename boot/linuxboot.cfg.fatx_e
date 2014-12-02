@@ -1,0 +1,4 @@
+kernel vmlinuz
+initrd initrd
+append init=/linuxrc root=/dev/ram0 kbd-reset xbox=fatx_e:/debian ramdisk_blocksize=4096 
+xboxfb y

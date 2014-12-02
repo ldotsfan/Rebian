@@ -1,0 +1,22 @@
+# X or text console
+case "`tty`" in
+	/dev/tty[1-8])
+		DIA=dialog
+		;;
+	/dev/pts/*|/dev/ttyp*)
+		[ -x /usr/bin/gdialog ] && DIA=gdialog
+		[ -x /usr/bin/Xdialog ] && DIA=Xdialog
+		[ DIA = dialog ] && MODE=text
+		;;
+	*)
+		DIA=dialog
+		;;
+esac
+# text mode if DISPLAY is not set
+if [ -z "$DISPLAY" ] ; then
+	DIA=dialog
+fi
+
+DIA=dialog
+export DIA
+
